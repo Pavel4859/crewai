@@ -68,6 +68,32 @@ def parse_channels(text: str) -> list[str]:
     return [line.strip() for line in raw if line.strip()]
 
 
+def _show_analysis_report(report_text: str, report_filename: str) -> None:
+    st.success(f"Отчёт готов: `{report_filename}`")
+    st.caption("Если страница обновилась — отчёт также во вкладке «Сохранённые отчёты».")
+    with st.expander("Показать отчёт", expanded=True):
+        st.markdown(report_text)
+    st.download_button(
+        "⬇️ Скачать отчёт на компьютер (.md)",
+        data=report_text,
+        file_name=report_filename,
+        mime="text/markdown",
+        type="primary",
+        key=f"dl_report_{report_filename}",
+    )
+
+
+def _render_last_analysis_result() -> None:
+    if st.session_state.get("analysis_error"):
+        st.error(st.session_state.analysis_error)
+    if st.session_state.get("analysis_report") and st.session_state.get("analysis_filename"):
+        st.info("Последний завершённый анализ:")
+        _show_analysis_report(
+            st.session_state.analysis_report,
+            st.session_state.analysis_filename,
+        )
+
+
 # --- Tab 1: Quick channel check ---
 with tab_check:
     st.subheader("Быстрая проверка публичных каналов")
@@ -106,16 +132,21 @@ with tab_analyze:
     st.write(
         "Два агента: **аналитик** читает каналы, **копирайтер** пишет посты только "
         "на основе реальных постов конкурентов (без выдуманных фактов). "
-        "Занимает несколько минут — не закрывайте вкладку."
+        "Обычно **5–15 минут** — не закрывайте вкладку до сообщения «Готово»."
     )
+
+    if not llm_info["api_key_set"]:
+        st.error("OPENAI_API_KEY не задан. Добавьте ключ в Render → Environment.")
+
+    _render_last_analysis_result()
 
     with st.form("analysis_form"):
         col1, col2 = st.columns(2)
 
         with col1:
             niche = st.text_input("Ниша / тема", placeholder="инвестиции для новичков")
-            posts_per_channel = st.slider("Постов читать с каждого канала", 5, 30, 20)
-            posts_to_generate = st.slider("Постов написать для вас", 5, 20, 10)
+            posts_per_channel = st.slider("Постов читать с каждого канала", 5, 30, 10)
+            posts_to_generate = st.slider("Постов написать для вас", 3, 15, 5)
 
         with col2:
             target_audience = st.text_area(
@@ -133,8 +164,11 @@ with tab_analyze:
         submitted = st.form_submit_button("🚀 Запустить анализ", type="primary")
 
     if submitted:
+        st.session_state.analysis_error = None
         channels = parse_channels(competitor_channels)
-        if not niche.strip():
+        if not llm_info["api_key_set"]:
+            st.error("Сначала задайте OPENAI_API_KEY в Render → Environment.")
+        elif not niche.strip():
             st.error("Укажите нишу.")
         elif not channels:
             st.error("Укажите хотя бы один канал.")
@@ -145,17 +179,20 @@ with tab_analyze:
             status = st.status("Анализ на сервере…", expanded=True)
             status.write(f"Ниша: **{niche.strip()}**")
             status.write(f"Каналы: **{channels_str}**")
-            status.write("Чтение Telegram → анализ → написание постов…")
+            status.write("Шаг 1/2: аналитик читает Telegram…")
+            status.write("Шаг 2/2: копирайтер пишет посты…")
+            status.write("⏳ Подождите, это может занять до 15 минут.")
 
             try:
-                report_text = run_analysis(
-                    niche=niche.strip(),
-                    target_audience=audience,
-                    competitor_channels=channels_str,
-                    posts_per_channel=posts_per_channel,
-                    posts_to_generate=posts_to_generate,
-                    verbose=False,
-                )
+                with st.spinner("CrewAI работает…"):
+                    report_text = run_analysis(
+                        niche=niche.strip(),
+                        target_audience=audience,
+                        competitor_channels=channels_str,
+                        posts_per_channel=posts_per_channel,
+                        posts_to_generate=posts_to_generate,
+                        verbose=False,
+                    )
                 report_path = save_report(
                     report_text,
                     niche=niche.strip(),
@@ -163,30 +200,19 @@ with tab_analyze:
                     competitor_channels=channels_str,
                     posts_per_channel=posts_per_channel,
                 )
+                st.session_state.analysis_report = report_text
+                st.session_state.analysis_filename = report_path.name
+                st.session_state.analysis_error = None
                 status.update(label="Готово!", state="complete", expanded=False)
-
-                if IS_RENDER:
-                    st.success(
-                        f"Отчёт готов. Скачайте файл на ПК — "
-                        f"`{report_path.name}`"
-                    )
-                else:
-                    st.success(f"Отчёт сохранён: `{report_path.resolve()}`")
-
-                st.markdown(report_text)
-                st.download_button(
-                    "⬇️ Скачать отчёт на компьютер (.md)",
-                    data=report_text,
-                    file_name=report_path.name,
-                    mime="text/markdown",
-                    type="primary",
-                )
+                _show_analysis_report(report_text, report_path.name)
             except Exception as exc:
+                st.session_state.analysis_error = str(exc)
                 status.update(label="Ошибка", state="error", expanded=True)
                 st.error(str(exc))
                 st.info(
-                    "На Render проверьте Environment: OPENAI_API_KEY (ProxyAPI), "
-                    "OPENAI_BASE_URL=https://api.proxyapi.ru/openai/v1"
+                    "Проверьте Render → Logs и Environment: "
+                    "OPENAI_API_KEY, OPENAI_BASE_URL=https://api.proxyapi.ru/openai/v1. "
+                    "Если анализ оборвался по таймауту — уменьшите число каналов и постов."
                 )
 
 # --- Tab 3: Saved reports ---

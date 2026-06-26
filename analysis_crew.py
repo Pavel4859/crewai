@@ -61,20 +61,16 @@ WRITER_TASK_DESCRIPTION = (
     "Подготовь готовые посты для нового Telegram-канала в нише «{niche}».\n\n"
     "Целевая аудитория: {target_audience}\n"
     "Каналы-источники (те же, что у аналитика): {competitor_channels}\n"
-    "Сколько постов написать: {posts_to_generate}\n"
-    "Сколько постов перечитать с каждого канала: {posts_per_channel}\n\n"
+    "Сколько постов написать: {posts_to_generate}\n\n"
     "СТРОГИЕ ПРАВИЛА (нарушать нельзя):\n"
-    "1. ПЕРЕД написанием постов снова вызови read_telegram_channel для КАЖДОГО "
-    "канала из списка с post_limit={posts_per_channel}.\n"
-    "2. Используй ТОЛЬКО факты, цифры, темы и формулировки из tool и из отчёта "
-    "аналитика (раздел «Банк реальных фактов»). НИЧЕГО не придумывай.\n"
-    "3. Можно: перефразировать, улучшить структуру и подачу, собрать факты из "
-    "нескольких реальных постов в один пост, повторить удачные приёмы конкурентов.\n"
-    "4. Нельзя: выдуманные цифры, кейсы, отзывы, события, цитаты, которых нет в "
-    "прочитанных постах. Если факта нет — не пиши его; укажи «в постах конкурентов "
-    "этих данных не было».\n"
-    "5. В каждом посте обязателен блок **Источник:** @канал + дата поста (если есть) "
-    "+ какой реальный факт/тема взяты (краткая отсылка к оригиналу).\n\n"
+    "1. Используй ТОЛЬКО отчёт аналитика (предыдущая задача), особенно разделы "
+    "«Банк реальных фактов» и «Анализ по каждому каналу». Не вызывай tool повторно.\n"
+    "2. НИЧЕГО не придумывай: только факты и темы из отчёта аналитика.\n"
+    "3. Можно: перефразировать, улучшить структуру, собрать факты из нескольких "
+    "реальных постов в один пост.\n"
+    "4. Нельзя: выдуманные цифры, кейсы, отзывы, события, цитаты. Если факта нет "
+    "в отчёте — не пиши его.\n"
+    "5. В каждом посте обязателен блок **Источник:** @канал + дата + факт из отчёта.\n\n"
     "Посты должны быть сильнее по подаче, но фактическая база — только из реальных "
     "постов конкурентов.\n\n"
     "Структура раздела (обязательна):\n\n"
@@ -118,6 +114,8 @@ def build_crew(*, verbose: bool = True) -> Crew:
         tools=[read_telegram_channel],
         llm=llm,
         verbose=verbose,
+        max_execution_time=600,
+        max_iter=25,
     )
 
     writer = Agent(
@@ -127,15 +125,15 @@ def build_crew(*, verbose: bool = True) -> Crew:
             "улучшая подачу, но не выдумывая факты"
         ),
         backstory=(
-            "Ты копирайтер, который работает только с проверенными данными. "
-            "Перед написанием ты ВСЕГДА снова вызываешь read_telegram_channel по "
-            "каждому каналу. Ты можешь перефразировать, собирать и улучшать структуру "
-            "чужих постов, но запрещено придумывать цифры, кейсы, цитаты и события. "
-            "Каждый пост сопровождаешь ссылкой на источник (@канал, дата, факт)."
+            "Ты копирайтер, который работает только с проверенными данными из отчёта "
+            "аналитика. Ты можешь перефразировать и улучшать структуру, но запрещено "
+            "придумывать цифры, кейсы, цитаты и события. Каждый пост сопровождаешь "
+            "ссылкой на источник (@канал, дата, факт из отчёта)."
         ),
-        tools=[read_telegram_channel],
         llm=llm,
         verbose=verbose,
+        max_execution_time=600,
+        max_iter=20,
     )
 
     analysis_task = Task(
@@ -160,6 +158,22 @@ def build_crew(*, verbose: bool = True) -> Crew:
     )
 
 
+def _extract_crew_result(result) -> str:
+    parts: list[str] = []
+    tasks_output = getattr(result, "tasks_output", None) or []
+    for task_output in tasks_output:
+        text = (getattr(task_output, "raw", None) or str(task_output)).strip()
+        if text:
+            parts.append(text)
+    if parts:
+        return "\n\n---\n\n".join(parts)
+
+    raw = getattr(result, "raw", None)
+    if raw and str(raw).strip():
+        return str(raw).strip()
+    return str(result).strip()
+
+
 def run_analysis(
     *,
     niche: str,
@@ -169,6 +183,18 @@ def run_analysis(
     posts_to_generate: int = 10,
     verbose: bool = True,
 ) -> str:
+    import logging
+
+    logging.basicConfig(level=logging.INFO)
+    log = logging.getLogger("analysis_crew")
+    log.info(
+        "Старт анализа: niche=%s channels=%s posts=%s generate=%s",
+        niche,
+        competitor_channels,
+        posts_per_channel,
+        posts_to_generate,
+    )
+
     crew = build_crew(verbose=verbose)
     result = crew.kickoff(
         inputs={
@@ -180,8 +206,10 @@ def run_analysis(
         }
     )
 
-    if hasattr(result, "tasks_output") and result.tasks_output:
-        parts = [str(task_output.raw) for task_output in result.tasks_output]
-        return "\n\n---\n\n".join(parts)
-
-    return str(result)
+    report = _extract_crew_result(result)
+    if not report:
+        raise RuntimeError(
+            "CrewAI вернул пустой отчёт. Проверьте OPENAI_API_KEY на Render и логи сервиса."
+        )
+    log.info("Анализ завершён, длина отчёта: %s символов", len(report))
+    return report
