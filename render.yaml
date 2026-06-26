@@ -1,0 +1,21 @@
+# Полный проект на Render: веб + CrewAI + чтение Telegram
+# Управление из браузера на вашем ПК
+
+services:
+  - type: web
+    name: telegram-channel-analyzer
+    runtime: python
+    plan: free
+    region: frankfurt
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: streamlit run app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.10
+      - key: OPENAI_BASE_URL
+        value: https://api.proxyapi.ru/openai/v1
+      - key: OPENAI_MODEL_NAME
+        value: gpt-4o-mini
+      - key: OPENAI_API_KEY
+        sync: false

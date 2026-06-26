@@ -1,0 +1,7 @@
+# Требуется Python 3.10–3.13 (в проекте: .venv на 3.12)
+crewai>=1.15.0
+python-dotenv
+beautifulsoup4
+lxml
+httpx
+streamlit>=1.32.0
