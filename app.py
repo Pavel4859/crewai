@@ -12,6 +12,7 @@ from reports_store import (
     save_report,
 )
 from tools.telegram_reader import fetch_public_channel, format_channel_report
+from tools.channel_fetch import normalize_channel
 
 st.set_page_config(
     page_title="Telegram Channel Analyzer",
@@ -74,7 +75,7 @@ with tab_check:
 
     check_channels = st.text_area(
         "Каналы",
-        placeholder="investing_channel\n@crypto_news",
+        placeholder="durov\n@letsfly_sletat_ru\nt.me/s/durov",
         height=120,
         key="check_channels",
     )
@@ -86,7 +87,7 @@ with tab_check:
             st.error("Введите хотя бы один канал.")
         else:
             for ch in channels:
-                with st.spinner(f"Читаю @{ch.lstrip('@')}…"):
+                with st.spinner(f"Читаю @{normalize_channel(ch)}…"):
                     try:
                         data = fetch_public_channel(ch, post_limit=check_limit)
                         st.markdown(f"### @{data['channel']} — {data['title']}")

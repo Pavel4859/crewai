@@ -6,4 +6,4 @@ if (-not (Test-Path ".\.venv\Scripts\python.exe")) {
 }
 
 .\.venv\Scripts\Activate.ps1
-streamlit run app.py
+.\.venv\Scripts\python.exe -m streamlit run app.py

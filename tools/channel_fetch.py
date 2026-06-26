@@ -11,11 +11,23 @@ _USER_AGENT = (
 
 
 def normalize_channel(channel_username: str) -> str:
+    """Извлекает username из durov, @durov, t.me/durov, t.me/s/durov и полных ссылок."""
     channel = channel_username.strip()
-    if channel.startswith("https://t.me/"):
-        channel = channel.rstrip("/").split("/")[-1]
+    if not channel:
+        return ""
+
     if channel.startswith("@"):
         channel = channel[1:]
+
+    channel = re.sub(r"^https?://", "", channel, flags=re.IGNORECASE)
+    channel = re.sub(r"^(www\.)?t\.me/", "", channel, flags=re.IGNORECASE)
+
+    if channel.startswith("s/"):
+        channel = channel[2:]
+
+    channel = channel.rstrip("/").split("/")[-1]
+    channel = channel.split("?")[0].split("#")[0]
+
     return channel
 
 
