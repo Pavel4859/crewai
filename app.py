@@ -50,7 +50,7 @@ with st.sidebar:
     st.markdown(
         "**Как пользоваться**\n"
         "1. «Проверка каналов» — быстрый просмотр постов\n"
-        "2. «Полный анализ» — CrewAI готовит отчёт\n"
+        "2. «Полный анализ» — 2 агента: анализ ниши + готовые посты\n"
         "3. «Сохранённые отчёты» — история на сервере\n"
         "4. Скачайте .md на ПК для постоянного хранения"
     )
@@ -104,7 +104,8 @@ with tab_check:
 with tab_analyze:
     st.subheader("Полный анализ ниши (CrewAI)")
     st.write(
-        "Агент на сервере прочитает каналы и подготовит отчёт. "
+        "Два агента: **аналитик** читает каналы, **копирайтер** пишет посты только "
+        "на основе реальных постов конкурентов (без выдуманных фактов). "
         "Занимает несколько минут — не закрывайте вкладку."
     )
 
@@ -113,7 +114,8 @@ with tab_analyze:
 
         with col1:
             niche = st.text_input("Ниша / тема", placeholder="инвестиции для новичков")
-            posts_per_channel = st.slider("Постов с каждого канала", 5, 30, 20)
+            posts_per_channel = st.slider("Постов читать с каждого канала", 5, 30, 20)
+            posts_to_generate = st.slider("Постов написать для вас", 5, 20, 10)
 
         with col2:
             target_audience = st.text_area(
@@ -143,7 +145,7 @@ with tab_analyze:
             status = st.status("Анализ на сервере…", expanded=True)
             status.write(f"Ниша: **{niche.strip()}**")
             status.write(f"Каналы: **{channels_str}**")
-            status.write("Чтение Telegram → анализ CrewAI → отчёт…")
+            status.write("Чтение Telegram → анализ → написание постов…")
 
             try:
                 report_text = run_analysis(
@@ -151,6 +153,7 @@ with tab_analyze:
                     target_audience=audience,
                     competitor_channels=channels_str,
                     posts_per_channel=posts_per_channel,
+                    posts_to_generate=posts_to_generate,
                     verbose=False,
                 )
                 report_path = save_report(
