@@ -37,6 +37,17 @@ def format_channel_report(data: dict) -> str:
         lines.append(f"Подписчики: {data['subscribers']}")
     if data.get("description"):
         lines.append(f"Описание: {data['description']}")
+
+    stats = data.get("stats") or {}
+    if stats:
+        lines.append("")
+        lines.append("Метрики по выборке постов:")
+        lines.append(f"- Постов в выборке: {stats.get('posts_analyzed', 0)}")
+        lines.append(f"- Постов с просмотрами: {stats.get('posts_with_views', 0)}")
+        if "views_avg" in stats:
+            lines.append(f"- Просмотры: мин {stats['views_min']}, медиана {stats['views_median']}, средние {stats['views_avg']}, макс {stats['views_max']}")
+        lines.append(f"- Частота публикаций: ~{stats.get('posts_per_week', 'н/д')} постов/неделю")
+
     lines.append("")
     lines.append(f"Последние посты ({len(data['posts'])}):")
 

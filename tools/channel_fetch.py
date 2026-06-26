@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from html import unescape
 
 import httpx
@@ -35,6 +36,52 @@ def _strip_message_html(html_fragment: str) -> str:
     text = re.sub(r"<br\s*/?>", "\n", html_fragment)
     text = re.sub(r"<[^>]+>", "", text)
     return unescape(text).strip()
+
+
+def _parse_view_count(raw: str) -> int | None:
+    raw = raw.strip().replace("\xa0", " ").replace(" ", "")
+    if not raw:
+        return None
+    upper = raw.upper()
+    for suffix, multiplier in (("K", 1_000), ("M", 1_000_000)):
+        if upper.endswith(suffix):
+            try:
+                return int(float(upper[:-1].replace(",", ".")) * multiplier)
+            except ValueError:
+                return None
+    digits = re.sub(r"[^\d]", "", raw)
+    return int(digits) if digits else None
+
+
+def _channel_stats(posts: list[dict[str, str]]) -> dict[str, str | int | float]:
+    view_counts = [
+        parsed
+        for post in posts
+        if (parsed := _parse_view_count(post.get("views", ""))) is not None
+    ]
+
+    dates: list[str] = [post["date"][:10] for post in posts if post.get("date")]
+    posts_per_week = "н/д"
+    if len(dates) >= 2:
+        try:
+            first = datetime.fromisoformat(dates[0])
+            last = datetime.fromisoformat(dates[-1])
+            span_days = max((last - first).days, 1)
+            posts_per_week = round(len(dates) / span_days * 7, 1)
+        except ValueError:
+            posts_per_week = "н/д"
+
+    stats: dict[str, str | int | float] = {
+        "posts_analyzed": len(posts),
+        "posts_with_views": len(view_counts),
+        "posts_per_week": posts_per_week,
+    }
+    if view_counts:
+        stats["views_min"] = min(view_counts)
+        stats["views_max"] = max(view_counts)
+        stats["views_avg"] = round(sum(view_counts) / len(view_counts))
+        stats["views_median"] = sorted(view_counts)[len(view_counts) // 2]
+    return stats
 
 
 def fetch_channel_from_telegram(channel_username: str, post_limit: int = 15) -> dict:
@@ -89,4 +136,5 @@ def fetch_channel_from_telegram(channel_username: str, post_limit: int = 15) -> 
         "description": about_el.get_text("\n", strip=True) if about_el else "",
         "subscribers": subscribers_el.get_text(strip=True) if subscribers_el else "",
         "posts": posts,
+        "stats": _channel_stats(posts),
     }
